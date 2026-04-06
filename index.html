@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#000000" />
+    <title>Presenter — script</title>
+    <style>
+      :root {
+        --bg: #000000;
+        --surface: #0a0a0a;
+        --text: #ffffff;
+        --muted: #a3a3a3;
+        --accent: #22c55e;
+        --border: #404040;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        font-size: 112.5%;
+      }
+
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        -webkit-tap-highlight-color: rgba(34, 197, 94, 0.25);
+      }
+
+      /* Top nav: one button per slide */
+      .nav-slides {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        gap: 6px;
+        padding: 10px 12px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        overflow-x: auto;
+        flex-shrink: 0;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+      }
+
+      .nav-slides::-webkit-scrollbar {
+        display: none;
+      }
+
+      .nav-slides button {
+        flex: 0 0 auto;
+        min-width: 3rem;
+        min-height: 3rem;
+        padding: 0 1.1rem;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--bg);
+        color: var(--text);
+        font-size: 1.35rem;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .nav-slides button:active {
+        transform: scale(0.97);
+      }
+
+      .nav-slides button.active {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #000000;
+      }
+
+      .nav-slides button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      main {
+        flex: 1;
+        padding: 1.1rem 1.15rem 7rem;
+        max-width: 48rem;
+        margin: 0 auto;
+        width: 100%;
+      }
+
+      .slide-meta {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+        flex-wrap: wrap;
+      }
+
+      h1 {
+        font-size: clamp(1.35rem, 4.2vw, 1.85rem);
+        font-weight: 700;
+        line-height: 1.28;
+        margin: 0;
+        flex: 1;
+        min-width: 0;
+      }
+
+      .timer {
+        font-variant-numeric: tabular-nums;
+        font-size: clamp(1.05rem, 3.2vw, 1.25rem);
+        color: var(--muted);
+        white-space: nowrap;
+      }
+
+      .timer strong {
+        color: var(--accent);
+        font-weight: 600;
+      }
+
+      .content {
+        font-size: clamp(1.35rem, 4.8vw, 1.75rem);
+        line-height: 1.52;
+      }
+
+      .content p {
+        margin: 0 0 1em;
+      }
+
+      .content p:last-child {
+        margin-bottom: 0;
+      }
+
+      .content strong {
+        color: #ffffff;
+      }
+
+      .content em {
+        color: var(--muted);
+        font-style: italic;
+      }
+
+      .error {
+        padding: 1.25rem;
+        color: #fca5a5;
+        text-align: center;
+        font-size: 1.15rem;
+      }
+
+      /* Bottom prev/next */
+      .nav-arrows {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        gap: 10px;
+        padding: 12px 16px;
+        padding-bottom: max(12px, env(safe-area-inset-bottom));
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+      }
+
+      .nav-arrows button {
+        flex: 1;
+        min-height: 3.35rem;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--bg);
+        color: var(--text);
+        font-size: 1.3rem;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .nav-arrows button:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+
+      .nav-arrows button:not(:disabled):active {
+        transform: scale(0.99);
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #000000;
+      }
+
+      .nav-arrows button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="nav-slides" id="nav-slides" aria-label="Jump to slide"></nav>
+    <main id="main" hidden>
+      <div class="slide-meta">
+        <h1 id="slide-title"></h1>
+        <div class="timer" aria-live="polite">
+          <strong id="timer-value">0</strong>s on slide
+        </div>
+      </div>
+      <article class="content" id="slide-body"></article>
+    </main>
+    <div class="error" id="error" hidden></div>
+    <div class="nav-arrows" id="nav-arrows" hidden>
+      <button type="button" id="btn-prev" aria-label="Previous slide">← Previous</button>
+      <button type="button" id="btn-next" aria-label="Next slide">Next →</button>
+    </div>
+
+    <script>
+      // Hard-coded copy of final-script.md — edit here or sync from the .md file when it changes.
+      const SCRIPT_MD = `# POP3 Presentation — Final Speaking Script
+
+**Total word count**: ~1,500 words  
+**Estimated delivery time**: ~10–11 minutes at 140–150 wpm (natural pace with pauses)  
+**Note**: Replace [Your Name] and [Your Student Number] before delivery. Q&A time (~2 min) is not counted in the total.
+
+---
+
+## [Slide 1 — Title / Agenda — ~30 sec]
+
+Hey everyone.
+Before I dive in, let me just walk you through what we're covering today.
+We've got an introduction, then I'll get into what POP3 actually is, how it works, the commands the protocol uses, and how those fit into session states.
+After that we'll cover security, compare it to IMAP, hit two fun facts that I think will surprise you, and then open it up for Q&A.
+Alright, let's get started.
+
+*[Advance to Slide 2]*
+
+---
+
+## [Slide 2 — Introduction — ~75 sec]
+
+My name is [Your Name], and my student number is [Your Student Number].
+I picked this topic because email is something we all use every single day — and most of us have no idea what's actually happening underneath when we hit "check mail."
+
+When I looked at the protocol list for this assignment, there was really only one I wanted.
+Think about this for a second: every time you've ever checked your email, there's a protocol that handled fetching those messages from the server to your device.
+That protocol has been around since 1984 — and the version we use today hasn't changed since 1996.
+That's not a typo.
+Thirty years.
+Unchanged.
+The protocol I'm presenting is...
+
+*[pause for reveal]*
+
+**POP3.**
+
+*[Advance to Slide 3]*
+
+---
+
+## [Slide 3 — What is POP3? — ~75 sec]
+
+So what is POP3?
+The full name is Post Office Protocol Version 3.
+It's an application-layer internet protocol — meaning it sits at the top of the networking stack, the same level as HTTP or DNS — and its job is to retrieve email from a mail server and deliver it to your device.
+
+On the screen you can see the two port numbers it uses.
+Port 110 is the plain-text connection — it works, but without encryption your credentials go across the wire in the open.
+Port 995 is POP3S — that's POP3 with implicit TLS, meaning the connection is encrypted from the very first byte.
+For any new setup, port 995 is what you want.
+
+POP3 was created by Marshall Rose and first defined as RFC 1081 in 1988.
+The current standard — RFC 1939 — came out in May 1996, and it's been the definitive spec ever since.
+It runs on literally every major email client you've heard of: Outlook, Thunderbird, Apple Mail, Gmail — they all support it.
+
+*[Advance to Slide 4]*
+
+---
+
+## [Slide 4 — History — ~60 sec]
+
+POP3 didn't appear out of nowhere — it's actually the third version of the Post Office Protocol, and it took about twelve years to get to the version we use today.
+
+It started in 1984 with POP1, defined in RFC 918.
+It was written by Joyce Reynolds and was about as minimal as a protocol can get — connect, grab all your messages, disconnect.
+No selecting individual messages, nothing fancy.
+
+A year later in 1985, POP2 came out as RFC 937.
+It was a complete redesign — new commands, new structure — but it was incompatible with POP1 and never really took off.
+
+Then in 1988, Marshall Rose wrote POP3 as RFC 1081.
+This is the version that stuck.
+He brought in the command set we still use today and kept it deliberately simple.
+The spec went through a few more revisions — RFC 1225, RFC 1460, RFC 1725 — each one cleaning up edge cases and adding small features.
+
+Finally in May 1996, RFC 1939 was published, co-authored by Marshall Rose and John Myers.
+That became the definitive standard — STD 53 — and it hasn't changed since.
+
+*[Advance to Slide 5]*
+
+---
+
+## [Slide 5 — How does it work? — ~60 sec]
+
+Now, why was POP3 built in the first place?
+It was solving a very specific 1980s problem.
+Back then, most people were connecting to the internet over dialup — you'd dial in, do what you needed, then hang up and go offline.
+SMTP could deliver mail between servers just fine, but there was no good way for a regular person to go and *pick up* their mail from the server.
+POP3 was the answer.
+
+The model it uses is sometimes called "store and forward."
+You can see it in the diagram on screen: the mail server holds your messages until you connect.
+You authenticate, you download, and then you disconnect.
+By default, the server deletes the messages after you download them — because the whole point is that they now live on your device.
+Marshall Rose described his design philosophy as "simple enough to implement in an afternoon."
+That's not a figure of speech — a working POP3 server can be written in under 500 lines of code.
+
+*[Advance to Slide 6]*
+
+---
+
+## [Slide 6 — POP3 commands — ~70 sec]
+
+*[Build the slide as two columns plus a slim footer — monospace or tabular font for commands, body text for glosses. Left column title: **AUTHORIZATION** (before the mailbox is open). Right column title: **TRANSACTION** (mailbox locked, one client at a time). Footer one line: **QUIT** in TRANSACTION → **UPDATE** (commit DELEs, unlock, close TCP) — RFC 1939.]*
+
+**Left — AUTHORIZATION**
+
+| Command | Role |
+|--------|------|
+| \`USER\` *mailbox* | Identify the mailbox. |
+| \`PASS\` *string* | Send the password; server replies +OK or -ERR. |
+| \`QUIT\` | Hang up without opening the mailbox (e.g. bad login). |
+
+**Right — TRANSACTION**
+
+| Command | Role |
+|--------|------|
+| \`STAT\` | Message count and total octets in the mailbox. |
+| \`LIST\` [*n*] | Scan sizes — all messages, or one line for message *n*. |
+| \`RETR\` *n* | Download the full RFC 822 message *n*. |
+| \`DELE\` *n* | **Mark** message *n* for deletion (not removed until UPDATE). |
+| \`NOOP\` | No-op; keeps the session alive, confirms server is there. |
+| \`RSET\` | Clear all DELE marks for this session. |
+| \`QUIT\` | Leave TRANSACTION → run **UPDATE**, then close. |
+
+Optional extensions many servers implement: \`TOP\`, \`UIDL\`, \`CAPA\` — not required for a minimal client.
+
+Before we walk through states, this is the whole core vocabulary — a dozen verbs, most of which you can read right off the slide.
+**USER** and **PASS** are how you prove who you are.
+In **TRANSACTION**, **STAT** and **LIST** are how you see what's waiting; **RETR** pulls a message down; **DELE** flags something to disappear *after* you're done — we'll see why that matters in a second.
+**NOOP** and **RSET** are the housekeeping commands: stay-alive and undo pending deletes.
+**QUIT** is the hinge: early on it just disconnects; once you're in **TRANSACTION**, the same command is what *commits* your deletes and tears the session down cleanly.
+
+*[Advance to Slide 7]*
+
+---
+
+## [Slide 7 — Session States — ~90 sec]
+
+Let me show you how POP3 actually works under the hood.
+Every single POP3 session — no exceptions — passes through exactly three states, and you can see them laid out in the diagram on screen.
+
+The first state is **AUTHORIZATION**.
+This is where you log in.
+The client sends a USER command with your mailbox name, then a PASS command with your password.
+Once those check out, you move to the second state.
+
+The second state is **TRANSACTION**.
+This is where all the work happens.
+The server locks your mailbox — only one active session at a time — and the client uses commands like STAT to count messages, RETR to download one, and DELE to mark one for deletion.
+Key word: *mark*.
+DELE doesn't actually delete anything yet.
+
+That deletion only happens in the third state: **UPDATE**.
+UPDATE is triggered when the client sends a QUIT command.
+The server then executes all the pending deletions, releases the mailbox lock, and closes the TCP connection.
+Here's the genuinely clever part: if your internet drops mid-session without a proper QUIT, the server never enters UPDATE — so no messages are lost.
+A dropped connection is completely safe by design.
+
+*[Advance to Slide 8]*
+
+---
+
+## [Slide 8 — Security — ~60 sec]
+
+Okay, I need to talk about security, because this is where POP3 has a real problem.
+Look at the code block on screen.
+That is literally what an attacker sees on the network if you connect on port 110 without any encryption.
+Your username.
+Your password.
+In plain text.
+Anyone on the same network with basic packet-capture tools can read it.
+
+There was an older workaround called APOP — it used a challenge-response mechanism based on MD5.
+But MD5 is cryptographically broken now, so APOP is deprecated.
+There's also STARTTLS, which lets you upgrade a port-110 connection to encrypted mid-session — but that upgrade can be stripped by a network attacker before it happens.
+
+The secure answer is simple: use port 995.
+POP3S wraps the entire connection in TLS from byte one.
+No cleartext phase.
+No downgrade risk.
+If you're setting up POP3 for anything today, port 995 is the only right answer.
+
+*[Advance to Slide 9]*
+
+---
+
+## [Slide 9 — POP3 vs. IMAP — ~60 sec]
+
+So how does POP3 compare to the alternatives?
+The table on screen shows the three email protocols you're most likely to encounter.
+SMTP is for sending mail — it's not a retrieval protocol at all, so that's in its own category.
+The real comparison is POP3 versus IMAP.
+
+POP3 is offline-first: it downloads mail to your device and removes it from the server.
+IMAP is cloud-first: messages stay on the server, and everything syncs across all your devices.
+IMAP wins for multi-device use — your phone, laptop, and tablet all see the same inbox.
+POP3 wins on simplicity, low server overhead, and privacy — your messages live locally and not on someone else's server.
+For a single-device workflow, or for automated scripts that process email, POP3 is still a perfectly legitimate choice.
+
+*[Advance to Slide 10]*
+
+---
+
+## [Slide 10 — Fun facts! — ~125 sec]
+
+Alright, two fun facts — and these are the ones that genuinely surprised me.
+
+**Fun Fact number one**: RFC 1939, the POP3 standard, was published in May 1996.
+And it has never been modified.
+Not once.
+Look at the timeline on screen.
+Google was founded two years after RFC 1939.
+The first iPhone came out eleven years after.
+Instagram, Snapchat, ChatGPT — all of those came after a protocol spec that has sat completely unchanged this entire time.
+What that means in practice: a POP3 client someone wrote in 1996 will connect to a POP3 server deployed today and they will work together perfectly.
+Total interoperability across thirty years.
+RFC 1939 is also one of fewer than 80 RFCs ever elevated to full Internet Standard status — listed as STD 53.
+In a field where things get deprecated and replaced every few years, that kind of stability is genuinely remarkable.
+
+**Fun Fact number two**: POP3 is supposedly dead.
+You'll find tech articles declaring it obsolete going back to the early 2000s.
+Here's the thing — look at the provider grid on screen.
+Gmail still offers POP3 access.
+So does Outlook.com, Yahoo Mail, Fastmail, and even ProtonMail.
+In fact, Gmail's "Check mail from other accounts" feature — the one that lets you pull in messages from an external address — uses POP3 under the hood.
+Right now.
+In 2026.
+Dovecot, the most widely deployed open-source mail server software in the world, ships POP3 as a first-class feature.
+And there will never be a POP4 — that's intentional.
+IMAP covers the richer use cases, and JMAP is the modern successor for everything else.
+POP3 found its lane, and it's staying there.
+
+*[Advance to Slide 11]*
+
+---
+
+## [Slide 11 — Q&A — ~10 sec]
+
+And that's everything I've got.
+Does anyone have any questions?
+
+*[Hold slide; take questions for ~2 minutes]*
+
+*[Advance to Slide 12 after Q&A]*
+
+---
+
+## [Slide 12 — End — ~10 sec]
+
+Thanks for listening.
+Sources are on the screen — RFC 1939 is the primary technical reference, and everything I covered traces back to that document.
+
+---
+
+*End of script.*
+`;
+
+      function escapeHtml(s) {
+        return s
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      /** Minimal inline markdown: **bold**, *italic*, newlines in paragraphs */
+      function inlineMd(s) {
+        let t = escapeHtml(s);
+        t = t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+        t = t.replace(/\*(.+?)\*/g, "<em>$1</em>");
+        t = t.replace(/\n/g, "<br>");
+        return t;
+      }
+
+      /** One markdown "block" per \\n\\n; non-table blocks split so each line is its own <p> (sentence-per-line scripts). */
+      function mdToHtml(block) {
+        return block
+          .split(/\n\n+/)
+          .map((p) => p.trim())
+          .filter(Boolean)
+          .flatMap((p) => {
+            if (/^\|/m.test(p)) return [`<p>${inlineMd(p)}</p>`];
+            return p
+              .split(/\n/)
+              .map((line) => line.trim())
+              .filter(Boolean)
+              .map((line) => `<p>${inlineMd(line)}</p>`);
+          })
+          .join("");
+      }
+
+      /**
+       * Parse script from first "## [Slide N — …]" heading (final-script.md format).
+       * Split on each following slide heading — not on --- lines (fragile with CRLF / HTML parsing).
+       * Heading dash after slide number: em/en/hyphen/minus (\u2014 \u2013 \u2010 \u2212 -).
+       */
+      function parseSlides(md) {
+        md = md.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        const start = md.search(/^## \[Slide \d/m);
+        if (start === -1) return [];
+        const rest = md.slice(start).trimStart();
+        const splitBeforeNextSlide = /(?=\n## \[Slide \d+)/;
+        const chunks = rest.split(splitBeforeNextSlide);
+        // Bracketed heading: ## [Slide N — title — timing]; dash: em/en/hyphen/minus
+        const headingRe = /^## \[Slide (\d+)\s*[\u2014\u2013\u2010\u2212-]\s*(.+)\]\s*\n([\s\S]*)/;
+        const slides = [];
+        for (const raw of chunks) {
+          const chunk = raw.trim();
+          if (!chunk) continue;
+          const m = chunk.match(headingRe);
+          if (!m) continue;
+          const num = m[1];
+          const heading = m[2].trim();
+          let body = m[3].trim();
+          body = body.replace(/\n---\s*\n## Script Statistics[\s\S]*$/, "").trim();
+          body = body.replace(/\n---\s*\n\*End of script\.\*\s*$/, "").trim();
+          if (/^## Script Statistics/m.test(body)) break;
+          slides.push({
+            num,
+            heading,
+            bodyHtml: mdToHtml(body),
+          });
+        }
+        return slides;
+      }
+
+      const navSlides = document.getElementById("nav-slides");
+      const mainEl = document.getElementById("main");
+      const errEl = document.getElementById("error");
+      const titleEl = document.getElementById("slide-title");
+      const bodyEl = document.getElementById("slide-body");
+      const timerValueEl = document.getElementById("timer-value");
+      const navArrows = document.getElementById("nav-arrows");
+      const btnPrev = document.getElementById("btn-prev");
+      const btnNext = document.getElementById("btn-next");
+
+      let slides = [];
+      let index = 0;
+      let secondsOnSlide = 0;
+      let timerId = null;
+
+      function stopTimer() {
+        if (timerId !== null) {
+          clearInterval(timerId);
+          timerId = null;
+        }
+      }
+
+      function startTimer() {
+        stopTimer();
+        secondsOnSlide = 0;
+        timerValueEl.textContent = String(secondsOnSlide);
+        timerId = window.setInterval(() => {
+          secondsOnSlide += 1;
+          timerValueEl.textContent = String(secondsOnSlide);
+        }, 1000);
+      }
+
+      function updateUrlHash() {
+        const n = index + 1;
+        if (window.location.hash !== `#${n}`) {
+          history.replaceState(null, "", `#${n}`);
+        }
+      }
+
+      function renderSlide(i) {
+        index = Math.max(0, Math.min(i, slides.length - 1));
+        const s = slides[index];
+        titleEl.textContent = `Slide ${s.num} — ${s.heading}`;
+        bodyEl.innerHTML = s.bodyHtml;
+
+        navSlides.querySelectorAll("button").forEach((btn, j) => {
+          btn.classList.toggle("active", j === index);
+        });
+
+        btnPrev.disabled = index <= 0;
+        btnNext.disabled = index >= slides.length - 1;
+
+        startTimer();
+        updateUrlHash();
+      }
+
+      function goTo(i) {
+        renderSlide(i);
+        navSlides.children[index]?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+      }
+
+      function readHashIndex() {
+        const m = /^#(\d+)$/.exec(window.location.hash);
+        if (!m) return 0;
+        const n = parseInt(m[1], 10) - 1;
+        if (n < 0 || n >= slides.length) return 0;
+        return n;
+      }
+
+      function initNav() {
+        navSlides.innerHTML = "";
+        slides.forEach((s, i) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.textContent = s.num;
+          b.setAttribute("aria-label", `Slide ${s.num}: ${s.heading}`);
+          b.addEventListener("click", () => goTo(i));
+          navSlides.appendChild(b);
+        });
+      }
+
+      btnPrev.addEventListener("click", () => goTo(index - 1));
+      btnNext.addEventListener("click", () => goTo(index + 1));
+
+      window.addEventListener("hashchange", () => {
+        if (slides.length === 0) return;
+        const i = readHashIndex();
+        if (i !== index) renderSlide(i);
+      });
+
+      function boot() {
+        slides = parseSlides(SCRIPT_MD);
+        if (slides.length === 0) {
+          errEl.hidden = false;
+          errEl.textContent = "No slides found in embedded script.";
+          return;
+        }
+
+        initNav();
+        mainEl.hidden = false;
+        navArrows.hidden = false;
+        errEl.hidden = true;
+        renderSlide(readHashIndex());
+      }
+
+      boot();
+    </script>
+  </body>
+</html>
